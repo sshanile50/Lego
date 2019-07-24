@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_restplus import Resource, Api
 from enum import Enum
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -8,7 +8,7 @@ import random
 import datetime
 
 
-class Model(Enum):
+class Model(str, Enum):
     MEAN = 'mean'
     MEDIAN = 'median'
 
@@ -24,6 +24,13 @@ class Result(db.Model):
     result = db.Column(db.Float)
     model_name = db.Column(db.PickleType)
     time = db.Column(db.DateTime, primary_key=True)
+
+    @property
+    def serialize(self):
+        return {
+            "result": self.result,
+            "model_name": self.model_name
+        }
 
 
 db.create_all()
@@ -57,6 +64,13 @@ class DeactivateModels(Resource):
     def post(self):
         scheduler.remove_all_jobs()
         db.drop_all()
+
+
+@api.route('/stats')
+class Stats(Resource):
+    def get(self):
+        results_list = Result.query.order_by(Result.time).all()
+        return jsonify([i.serialize for i in results_list])
 
 
 if __name__ == '__main__':
