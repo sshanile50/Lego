@@ -2,7 +2,7 @@ from flask import Flask, jsonify
 from flask_restplus import Resource, Api
 from enum import Enum
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask_sqlalchemy import SQLAlchemy
+from dbmodels import db, Result
 import models
 import random
 import datetime
@@ -16,24 +16,11 @@ class Model(str, Enum):
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://postgres:75210@localhost:5432/modelsResults'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
 api = Api(app)
+db.init_app(app)
 
-
-class Result(db.Model):
-    result = db.Column(db.Float)
-    model_name = db.Column(db.PickleType)
-    time = db.Column(db.DateTime, primary_key=True)
-
-    @property
-    def serialize(self):
-        return {
-            "result": self.result,
-            "model_name": self.model_name
-        }
-
-
-db.create_all()
+with app.app_context():
+    db.create_all()
 
 parser = api.parser()
 parser.add_argument('model', type=Model, choices=list(Model))
@@ -46,8 +33,9 @@ scheduler.start()
 def call_models_job(model):
     numbers = [random.random() for _ in range(10)]
     res = models.mean(numbers) if model == Model.MEAN else models.median(numbers)
-    db.session.add(Result(result=res, model_name=model, time=datetime.datetime.now()))
-    db.session.commit()
+    with app.app_context():
+        db.session.add(Result(result=res, model_name=model, time=datetime.datetime.now()))
+        db.session.commit()
 
 
 @api.route('/activate')
@@ -63,7 +51,6 @@ class ActivateModels(Resource):
 class DeactivateModels(Resource):
     def post(self):
         scheduler.remove_all_jobs()
-        db.drop_all()
 
 
 @api.route('/stats')
